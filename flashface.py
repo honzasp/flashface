@@ -5,6 +5,8 @@ Usage:  python3 flashface.py [--port 8000] [--cards cards.csv] [--reviews review
 Then open http://localhost:8000/ in a browser.
 
 cards.csv (id,name,image_url) is maintained by hand and reloaded when it changes.
+An optional info column holds extra facts about the person, which are shown
+below the name on the answer side but are not meant to be memorized.
 reviews.csv (timestamp,card_id,grade,reveal_ms) is an append-only log of reviews.
 The scheduling state of each card is never stored: it is rebuilt by replaying the
 review log, so changing the algorithm below re-interprets the whole history.
@@ -187,7 +189,7 @@ class App:
                     if cid in cards:
                         print(f"warning: {self.cards_path}:{line}: duplicate id {cid!r} ignored", file=sys.stderr)
                         continue
-                    cards[cid] = {"name": (row.get("name") or "").strip(), "image_url": (row.get("image_url") or "").strip()}
+                    cards[cid] = {key: (row.get(key) or "").strip() for key in ("name", "info", "image_url")}
         except (OSError, csv.Error) as e:
             if self.cards_mtime is None:
                 raise SystemExit(f"error: cannot read {self.cards_path}: {e}")
@@ -283,7 +285,10 @@ main { width: min(100%, 34rem); padding: 1.5rem 1rem; text-align: center; }
 #face { display: block; margin: 0 auto; max-width: 100%; max-height: 60vh; border-radius: 12px;
         background: var(--card); box-shadow: 0 4px 20px rgb(0 0 0 / .15); }
 .panel { min-height: 8.5rem; padding-top: 1.25rem; }
+.panel.with-info { min-height: 10.5rem; }
 h1 { margin: 0 0 1rem; font-size: 1.8rem; }
+h1:has(+ .info) { margin-bottom: .25rem; }
+.info { margin: 0 0 1rem; font-size: 1.2rem; color: var(--muted); }
 button { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--border);
          border-radius: 8px; padding: .6rem 1.2rem; cursor: pointer; }
 button:hover { filter: brightness(.95); }
@@ -356,12 +361,14 @@ def card_page(card_id: str, card: dict[str, str], stats: dict[str, int], interva
         f"<small>{intervals[g]}</small></button>"
         for i, g in enumerate(GRADES, start=1)
     )
+    info = card.get("info", "")
+    info_html = f'\n<p class="info">{e(info)}</p>' if info else ""
     return page(f"""{stats_html(stats)}
 <img id="face" src="{e(card["image_url"])}" alt="Who is this?" referrerpolicy="no-referrer">
-<div class="panel">
+<div class="panel{" with-info" if info else ""}">
 <button id="show" type="button">Show name <kbd>Enter</kbd></button>
 <div id="answer" hidden>
-<h1>{e(card["name"])}</h1>
+<h1>{e(card["name"])}</h1>{info_html}
 <form method="post" action="/submit">
 <input type="hidden" name="card_id" value="{e(card_id)}">
 <input type="hidden" name="reveal_ms" id="reveal_ms" value="">
